@@ -1,0 +1,6 @@
+====================================================
+🚀 SocietySync Node.js Server listening on port 5000
+🌐 Base URL: http://localhost:5000
+🗄️ Database: plot_manage_db (Prefix: plot_manage_)
+====================================================
+✅ [MYSQL DB] Auto-schema ready in database plot_manage_db with AUTO_INCREMENT PRIMARY KEYS & Agent Directory.

@@ -4,7 +4,7 @@ const mysql = require('mysql2/promise');
 
 // MySQL Connection Pool Settings
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || '43.204.109.149  ',
+  host: process.env.DB_HOST || '43.204.109.149',
   user: process.env.DB_USER || 'admin',
   password: process.env.DB_PASSWORD || 'FThgQzGikOtMmojRBBPc',
   database: process.env.DB_NAME || 'realestate_db',

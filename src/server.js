@@ -1,19 +1,22 @@
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
-const path = require('path');
 const net = require('net');
 const { spawn } = require('child_process');
 const dbPool = require('./db');
 
 const app = express();
-const PORT = process.env.PORT || 6000;
+const PORT = parseInt(process.env.PORT || '6000', 10);
+const DB_HOST = process.env.DB_HOST || '127.0.0.1';
+const DB_PORT = parseInt(process.env.DB_PORT || '3306', 10);
 
 let isDatabaseConnected = false;
 let autoRecoveryTimer = null;
 
-// Helper to check if MySQL port (3306) is accepting connections
-function checkPortOpen(port = 3306, host = '127.0.0.1', timeoutMs = 800) {
+// Helper to check if MySQL port is accepting connections
+function checkPortOpen(port = DB_PORT, host = DB_HOST, timeoutMs = 1500) {
   return new Promise((resolve) => {
     const socket = new net.Socket();
     socket.setTimeout(timeoutMs);
@@ -74,7 +77,7 @@ async function tryAutoStartLocalMySQL() {
 function scheduleMySQLAutoRecovery() {
   if (autoRecoveryTimer) return;
   autoRecoveryTimer = setInterval(async () => {
-    const isOpen = await checkPortOpen(3306);
+    const isOpen = await checkPortOpen(DB_PORT, DB_HOST);
     if (isOpen) {
       try {
         await initDatabaseSchema();
@@ -788,11 +791,12 @@ async function initDatabaseSchema() {
 }
 
 async function bootstrapDatabase() {
-  const isUp = await checkPortOpen(3306);
+  const isUp = await checkPortOpen(DB_PORT, DB_HOST);
   if (!isUp) {
-    const started = await tryAutoStartLocalMySQL();
+    const isLocalHost = DB_HOST === '127.0.0.1' || DB_HOST === 'localhost';
+    const started = isLocalHost ? await tryAutoStartLocalMySQL() : false;
     if (!started) {
-      console.log('⚡ [DATABASE] MySQL (127.0.0.1:3306) is offline -> Zero-downtime In-Memory mode active.');
+      console.log(`⚡ [DATABASE] MySQL (${DB_HOST}:${DB_PORT}) is offline -> Zero-downtime In-Memory mode active.`);
       console.log('🔄 [DATABASE] Background monitor active: will auto-connect when MySQL is started.');
       scheduleMySQLAutoRecovery();
       return;
@@ -957,12 +961,21 @@ app.delete('/api/agents/:id', async (req, res) => {
 
 app.get('/health', async (req, res) => {
   let dbStatus = 'OFFLINE';
+  let dbError = null;
+  const dbName = process.env.DB_NAME || 'plot_manage_db';
   try {
     const [rows] = await dbPool.query('SELECT 1 FROM realestate_plot_projects LIMIT 1');
-    if (rows) dbStatus = 'ONLINE (plot_manage_db)';
-  } catch (_) {}
+    if (rows) dbStatus = `ONLINE (${dbName})`;
+  } catch (err) {
+    dbError = err.code || err.message;
+  }
 
-  res.json({ status: 'OK', database: dbStatus, timestamp: new Date().toISOString() });
+  res.json({
+    status: 'OK',
+    database: dbStatus,
+    ...(dbError ? { dbError } : {}),
+    timestamp: new Date().toISOString()
+  });
 });
 
 // GET ALL PROJECTS FROM MYSQL DB (USER SPECIFIC)
@@ -4948,10 +4961,9 @@ app.listen(PORT, () => {
 });
 
 // Also listen on port 5000 if PORT != 5000 to support DevTunnel and legacy clients
-if (PORT !== 5000) {
-  try {
-    app.listen(5000, () => {
-      console.log(`🚀 Also listening on port 5000 for DevTunnel compatibility`);
-    });
-  } catch (_) {}
+if (Number(PORT) !== 5000) {
+  const legacyServer = app.listen(5000, () => {
+    console.log(`🚀 Also listening on port 5000 for DevTunnel compatibility`);
+  });
+  legacyServer.on('error', () => {});
 }
